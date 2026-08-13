@@ -86,6 +86,26 @@
           <a class="contact-link" href="mailto:2803544331@qq.com">📧 QQ邮箱：2803544331@qq.com</a>
           <a class="contact-link" href="https://www.douyin.com/" target="_blank" rel="noopener">🎵 抖音号：49929345049</a>
           <a class="contact-link" href="https://space.bilibili.com/" target="_blank" rel="noopener">📺 B站号：bili_55538514326</a>
+          <a class="contact-link" href="#game">🎮 玩我做的小游戏</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Game -->
+    <section class="section" id="game">
+      <div class="container">
+        <h2 class="section-title">玩自制游戏</h2>
+        <div class="game-box">
+          <button class="game-cover" id="gameCover" title="点击启动小游戏">
+            <img class="game-icon" src="tb.png" alt="小游戏图标" />
+            <span class="game-hint">点击图标启动小游戏 🎮</span>
+          </button>
+          <div class="game-player" id="gamePlayer" style="display:none;">
+            <div class="game-toolbar">
+              <button class="btn btn-ghost" id="gameClose">✕ 关闭游戏</button>
+            </div>
+            <iframe id="gameFrame" class="game-frame" title="小游戏" allow="fullscreen"></iframe>
+          </div>
         </div>
       </div>
     </section>
@@ -98,5 +118,25 @@
   </footer>
 
   <script src="script.js"></script>
+  <script>
+    (function () {
+      var cover = document.getElementById('gameCover');
+      var player = document.getElementById('gamePlayer');
+      var frame = document.getElementById('gameFrame');
+      var closeBtn = document.getElementById('gameClose');
+      function launch() {
+        frame.src = 'game.html';
+        cover.style.display = 'none';
+        player.style.display = 'block';
+      }
+      function closeGame() {
+        frame.src = 'about:blank';
+        player.style.display = 'none';
+        cover.style.display = 'flex';
+      }
+      cover.addEventListener('click', launch);
+      closeBtn.addEventListener('click', closeGame);
+    })();
+  </script>
 </body>
 </html>
