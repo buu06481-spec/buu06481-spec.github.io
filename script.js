@@ -1,58 +1,31 @@
-// 文章数据（替换为你自己的内容）
+// 文章数据
 const posts = [
   {
-    title: "用 CSS 变量打造可换肤的前端主题",
-    date: "2024-12-01",
-    excerpt: "介绍如何利用 CSS 自定义属性与 data-theme，优雅地实现深色模式与多主题切换。",
-    tags: ["CSS", "前端"],
-    emoji: "🎨",
-    color: "#ffe0b2",
-    url: "#",
-  },
-  {
-    title: "JavaScript 异步编程完全指南",
-    date: "2024-11-18",
-    excerpt: "从回调、Promise 到 async/await，一文搞懂 JavaScript 异步编程的来龙去脉。",
-    tags: ["JavaScript", "教程"],
-    emoji: "⚡",
-    color: "#c8e6c9",
-    url: "#",
-  },
-  {
-    title: "我的 2024 年读书清单",
-    date: "2024-11-02",
-    excerpt: "分享今年读过的几本好书，以及它们带给我的启发与思考。",
-    tags: ["阅读", "生活"],
-    emoji: "📚",
-    color: "#bbdefb",
-    url: "#",
-  },
-  {
-    title: "从零搭建个人博客的踩坑记录",
-    date: "2024-10-15",
-    excerpt: "记录自己搭建博客过程中的域名、部署、SEO 等经验，希望对你有用。",
-    tags: ["教程", "折腾"],
-    emoji: "🚀",
+    title: "母猪的产后护理",
+    date: "2026-08-13",
+    excerpt: "作为一个啥都会的工程师，母猪的产后护理我自然也略懂亿点。本文手把手教你，学不会算我输。",
+    tags: ["养殖", "硬核"],
+    emoji: "🐷",
     color: "#f8bbd0",
-    url: "#",
+    url: "post-1.html",
   },
   {
-    title: "TypeScript 类型体操入门",
-    date: "2024-09-28",
-    excerpt: "通过几个有趣的例子，带你领略 TypeScript 类型系统的强大与优雅。",
-    tags: ["TypeScript", "进阶"],
-    emoji: "🧩",
-    color: "#d1c4e9",
-    url: "#",
+    title: "如何10块钱花一个月",
+    date: "2026-08-12",
+    excerpt: "极限生存挑战：用10块钱过一个月，平均每天三毛三，月末居然还能剩两毛买糖。",
+    tags: ["生存", "理财"],
+    emoji: "💰",
+    color: "#c8e6c9",
+    url: "post-2.html",
   },
   {
-    title: "如何保持持续学习的动力",
-    date: "2024-09-10",
-    excerpt: "聊聊我在工作与生活中保持学习热情、建立知识体系的一些方法。",
-    tags: ["成长", "思考"],
-    emoji: "🌱",
-    color: "#c5e1a5",
-    url: "#",
+    title: "怎么样才能中3000万的彩票",
+    date: "2026-08-11",
+    excerpt: "中彩票的终极攻略：按我说的做，中奖概率能从约等于0，提升到无限接近0。",
+    tags: ["玄学", "暴富"],
+    emoji: "🍀",
+    color: "#ffe0b2",
+    url: "post-3.html",
   },
 ];
 
@@ -60,6 +33,7 @@ const postsGrid = document.getElementById("postsGrid");
 const tagsCloud = document.getElementById("tagsCloud");
 
 function renderPosts(list) {
+  if (!postsGrid) return;
   postsGrid.innerHTML = list
     .map(
       (p) => `
@@ -79,6 +53,7 @@ function renderPosts(list) {
 }
 
 function renderTags() {
+  if (!tagsCloud) return;
   const counts = {};
   posts.forEach((p) => p.tags.forEach((t) => (counts[t] = (counts[t] || 0) + 1)));
   tagsCloud.innerHTML = Object.entries(counts)
@@ -90,23 +65,27 @@ function renderTags() {
 const themeToggle = document.getElementById("themeToggle");
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
-  themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
+  if (themeToggle) themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
   localStorage.setItem("theme", theme);
 }
 const savedTheme = localStorage.getItem("theme") || "light";
 applyTheme(savedTheme);
-themeToggle.addEventListener("click", () => {
-  const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
-  applyTheme(next);
-});
+if (themeToggle) {
+  themeToggle.addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    applyTheme(next);
+  });
+}
 
 // 移动端菜单
 const menuToggle = document.getElementById("menuToggle");
 const mainNav = document.getElementById("mainNav");
-menuToggle.addEventListener("click", () => mainNav.classList.toggle("open"));
-mainNav.querySelectorAll("a").forEach((a) =>
-  a.addEventListener("click", () => mainNav.classList.remove("open"))
-);
+if (menuToggle && mainNav) {
+  menuToggle.addEventListener("click", () => mainNav.classList.toggle("open"));
+  mainNav.querySelectorAll("a").forEach((a) =>
+    a.addEventListener("click", () => mainNav.classList.remove("open"))
+  );
+}
 
 // 初始化
 renderPosts(posts);
