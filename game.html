@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>飞机大战</title>
+<style>
+  body { margin:0; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#0a0a1a; color:#fff; font-family:"Microsoft YaHei",sans-serif; user-select:none; }
+  h1 { margin:0 0 8px; color:#7fd7ff; letter-spacing:4px; }
+  #tip { color:#aaa; font-size:14px; margin-bottom:8px; }
+  canvas { border:2px solid #335; background:#0a0a1a; touch-action:none; max-width:100%; height:auto; }
+  #menu { position:fixed; top:0; left:0; right:0; bottom:0; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; background:radial-gradient(circle at 50% 38%, #1a2450 0%, #0a0a24 55%, #05050f 100%); }
+  #menu h2 { margin:0 0 6px; color:#7fd7ff; font-size:34px; letter-spacing:4px; text-shadow:0 0 18px #2a7fd0; }
+  #menu .sub { margin:0 0 44px; color:#8aa0c0; font-size:14px; letter-spacing:3px; }
+  #menu button { display:block; width:240px; padding:14px 0; margin:10px auto; font-size:20px; font-family:"Microsoft YaHei",sans-serif; border:none; border-radius:12px; cursor:pointer; letter-spacing:5px; }
+  #startBtn { background:linear-gradient(180deg,#4db8ff,#2a7fd0); color:#fff; box-shadow:0 4px 16px rgba(45,130,210,0.5); }
+  #startBtn:hover { background:linear-gradient(180deg,#6cc9ff,#3a92e0); }
+  #musicBtn { background:#15222f; color:#cfe9ff; border:1px solid #335; }
+  #musicBtn:hover { background:#1f3040; }
+</style>
+</head>
+<body>
+<h1>✈ 飞机大战</h1>
+<div id="tip">方向键 / WASD 移动 · 空格射击 · 拾取技能球放大招 · 每 10 波出 Boss · 击杀升级 · 按 1/2/3 或点卡片选技能 · 死后按 R 或点屏幕重开</div>
+<canvas id="game" width="480" height="640"></canvas>
+<div id="menu">
+  <h2>✈ 飞机大战</h2>
+  <p class="sub">击败敌人 · 收集技能 · 挑战 Boss</p>
+  <button id="startBtn">开 始 游 戏</button>
+  <button id="musicBtn">♪ 音乐：开</button>
+</div>
+<script>
+(function () {
+  'use strict';
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+
+  var SKILLS = [
+    { id: 'triple', name: '三连发',  desc: '子弹 +2（扇形）',   max: 99,  icon: '🔱' },
+    { id: 'laser',  name: '激光炮',  desc: '自动发射贯穿激光',  max: 99,  icon: '⚡' },
+    { id: 'rapid',  name: '急速射击', desc: '射速大幅提升',      max: 99,  icon: '💥' },
+    { id: 'spread', name: '散射',    desc: '额外侧向子弹',      max: 99,  icon: '✨' },
+    { id: 'pierce', name: '贯穿弹',  desc: '子弹可穿透敌人',    max: 99,  icon: '🗡' },
+    { id: 'shield', name: '护盾',    desc: '获得 2 层护盾',     max: 99,  icon: '🛡' },
+    { id: 'heal',   name: '回血',    desc: '生命 +1',           max: 99,  icon: '➕' },
+    { id: 'spacium', name: '冲击波', desc: '定期释放一圈冲击波', max: 99,  icon: '🌀' },
+    { id: 'flame',  name: '火焰喷射', desc: '喷出灼烧粒子的火焰', max: 99,  icon: '🔥' }
+  ];
+
+  var player, bullets, enemies, score, lives, level, gameOver, keys, dragging;
+  var shootTimer, spawnTimer, laserTimer, laserFlash, spaciumTimer, spaciumFlash, flameTimer, flameParticles, stars, playerFlash, playerShake, screenShake;
+  var skillLevels, killCount, upgradeCount, selecting, choices;
+  var wave, waveKills, boss, bossBullets, pendingBoss, enemyBullets;
+  var orbs, orbSpawnTimer, beamActive, beamAngle, beamTextTimer, beamGrow;
+  var striumFlash, striumActive, striumTimer, striumTextTimer, striumGrow;
+  var cutters, cutterTextTimer;
+  var storedSkills;
+  var explosions, sparks, bossDeathTimer;
+  var started = false, musicOn = true;
+  var BASE_KILLS = 8;       // 基础击杀要求
+  var KILLS_PER_LEVEL = 5;  // 每次升级后，下一次要多杀的数量
+  var WAVE_KILLS = 8;       // 每波需要消灭的敌人数
+
+  function reset() {
+    player = { x: W / 2, y: H - 60, w: 40, h: 40, shield: 0 };
+    bullets = [];
+    enemies = [];
+    score = 0;
+    lives = 3;
+    level = 1;
+    gameOver = false;
+    keys = {};
+    dragging = false;
+    shootTimer = 0;
+    spawnTimer = 0;
+    laserTimer = 0;
+    laserFlash = 0;
+    spaciumTimer = 0;
+    spaciumFlash = 0;
+    flameTimer = 0;
+    flameParticles = [];
+    stars = [];
+    for (var si = 0; si < 90; si++) {
+      stars.push({ x: Math.random() * W, y: Math.random() * H, r: 0.4 + Math.random() * 1.6, sp: 8 + Math.random() * 26, ph: Math.random() * Math.PI * 2 });
+    }
+    playerFlash = 0;
+    playerShake = 0;
+    screenShake = 0;
+    skillLevels = { triple: 0, laser: 0, rapid: 0, spread: 0, pierce: 0, spacium: 0, flame: 0 };
+    killCount = 0;
+    upgradeCount = 0;
+    selecting = false;
+    choices = [];
+    wave = 1;
+    waveKills = 0;
+    boss = null;
+    bossBullets = [];
+    pendingBoss = false;
+    enemyBullets = [];
+    orbs = [];
+    orbSpawnTimer = 15 + Math.random() * 5;
+    beamActive = false;
+    beamAngle = 0;
+    beamTextTimer = 0;
+    beamGrow = 0;
+    striumFlash = 0;
+    striumActive = false;
+    striumTimer = 0;
+    striumTextTimer = 0;
+    striumGrow = 0;
+    cutters = [];
+    cutterTextTimer = 0;
+    storedSkills = [];
+    explosions = [];
+    sparks = [];
+    bossDeathTimer = 0;
+    // 开局先出 3 架敌机（普通怪）
+    for (var i = 0; i < 3; i++) {
+      enemies.push({ x: 30 + Math.random() * (W - 60), y: -30 - i * 100, r: 16, speed: 80 + Math.random() * 30, hp: enemyMaxHp(), maxHp: enemyMaxHp(), flash: 0, elite: false });
+    }
+  }
+
+  function fireInterval()  { return Math.max(0.09, 0.23 - skillLevels.rapid * 0.045); }
+  function laserCooldown() { return Math.max(0.7, 1.7 - skillLevels.laser * 0.28); }
+  function laserWidth()    { return 10 + skillLevels.laser * 8; }
+  function laserDamage()   { return 3 + skillLevels.laser; }
+  function spaciumCooldown() { return Math.max(3, 7 - skillLevels.spacium * 1.5); }
+  function flameDamage()     { return 1 + Math.floor(skillLevels.flame * 0.5); }
+  function bulletDamage()    { return 1 + skillLevels.pierce; }
+  function enemyMaxHp()    { return 2 + Math.floor(level * 0.5); }
+  function eliteMaxHp()    { return Math.max(8, enemyMaxHp() * 4); }
+  function killsNeeded()   { return Math.min(BASE_KILLS + upgradeCount * KILLS_PER_LEVEL, 25); }
+
+  // 生成一架敌人：有概率出精英怪（紫色：体型大、血厚、速度慢；橙色：会向下直射子弹）
+  function spawnEnemy(x, y) {
+    var eliteChance = Math.min(0.22, 0.1 + level * 0.006);
+    if (Math.random() < eliteChance) {
+      if (Math.random() < 0.35) {
+        // 橙色射击精英怪：血量同紫色精英，周期性向下发射直射子弹（不追踪）
+        enemies.push({ x: x, y: y, r: 26, speed: 46 + level * 2 + Math.random() * 12, hp: eliteMaxHp(), maxHp: eliteMaxHp(), flash: 0, elite: true, shooter: true, shootTimer: 1.2 + Math.random() * 0.8 });
+      } else {
+        enemies.push({ x: x, y: y, r: 26, speed: 50 + level * 2 + Math.random() * 15, hp: eliteMaxHp(), maxHp: eliteMaxHp(), flash: 0, elite: true, shooter: false });
+      }
+    } else {
+      enemies.push({ x: x, y: y, r: 16, speed: 70 + level * 5 + Math.random() * 20, hp: enemyMaxHp(), maxHp: enemyMaxHp(), flash: 0, elite: false });
+    }
+  }
+
+  // 击杀结算：计分 + 推进波次
+  function registerKill(dead) {
+    var kills = dead.elite ? 3 : 1;
+    score += dead.elite ? 30 : 10;
+    killCount += kills;
+    waveKills += kills;
+    if (waveKills >= WAVE_KILLS) {
+      waveKills = 0;
+      wave++;
+      if (wave % 10 === 0) pendingBoss = true;
+    }
+  }
+
+  function bossMaxHp(tier) { return Math.floor((60 + level * 10) * (1 + Math.max(0, tier - 2) * 0.5)); }
+
+  function spawnBoss() {
+    enemies = []; // Boss 战期间清空普通敌人
+    var tier = Math.floor(wave / 10);
+    var bossColors = ['#b0263c', '#2e86ab', '#8a4db0', '#3c9a6a', '#b06a3c'];
+    boss = {
+      x: W / 2, y: -80,
+      w: W * 0.8, h: 56,
+      hp: bossMaxHp(tier), maxHp: bossMaxHp(tier),
+      dir: 1, speed: 40 + level * 3,
+      shootTimer: 0, entering: true, flash: 0,
+      tier: tier,
+      variant: (tier - 1) % 3,
+      color: bossColors[(tier - 1) % bossColors.length]
+    };
+    bossBullets = [];
+  }
+
+  function spawnBossExplosion(x, y) {
+    explosions.push({ x: x, y: y, t: 0 });
+    var boomColors = ['#ffffff', '#ffdd55', '#ff8833', '#ff4444', '#88ccff'];
+    for (var bi = 0; bi < 110; bi++) {
+      var ang = Math.random() * Math.PI * 2;
+      var spd = 50 + Math.random() * 360;
+      sparks.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        life: 0.6 + Math.random() * 1.0,
+        color: boomColors[bi % boomColors.length]
+      });
+    }
+    screenShake = 0.9;
+  }
+
+  function killBoss() {
+    var bx = boss.x, by = boss.y;
+    score += 100 + level * 20;
+    spawnBossExplosion(bx, by);
+    boss = null;
+    bossBullets = [];
+    wave++;
+    waveKills = 0;
+    killCount = 0;           // Boss 奖励改为爆炸后单独触发一次选技能
+    bossDeathTimer = 1.5;    // 爆炸播完再弹选技能
+  }
+
+  document.addEventListener('keydown', function (e) {
+    var k = e.key.toLowerCase();
+    keys[k] = true;
+    if (k === ' ' || k.indexOf('arrow') === 0) e.preventDefault();
+    if (gameOver && k === 'r') { reset(); return; }
+    if (selecting && (k === '1' || k === '2' || k === '3')) {
+      var idx = parseInt(k, 10) - 1;
+      if (choices[idx]) applyChoice(choices[idx]);
+    }
+    if (!gameOver && !selecting && (k === '4' || k === '5' || k === '6')) {
+      var si = parseInt(k, 10) - 4;
+      if (storedSkills[si]) {
+        var st = storedSkills[si];
+        storedSkills.splice(si, 1);
+        if (st === 'specium') triggerSpecium();
+        else if (st === 'strium') triggerStrium();
+        else if (st === 'cutter') triggerCutter();
+      }
+    }
+  });
+  document.addEventListener('keyup', function (e) { keys[e.key.toLowerCase()] = false; });
+
+  canvas.addEventListener('click', function (e) {
+    if (gameOver) { reset(); return; }
+    if (!selecting) return;
+    var rect = canvas.getBoundingClientRect();
+    var mx = (e.clientX - rect.left) * (W / rect.width);
+    var my = (e.clientY - rect.top) * (H / rect.height);
+    for (var i = 0; i < choices.length; i++) {
+      var cy = 200 + i * 130;
+      if (mx >= W / 2 - 160 && mx <= W / 2 + 160 && my >= cy - 40 && my <= cy + 40) {
+        applyChoice(choices[i]);
+      }
+    }
+  });
+
+  // 拖动操控（鼠标 / 触屏）
+  function pointerPos(e) {
+    var rect = canvas.getBoundingClientRect();
+    return { x: (e.clientX - rect.left) * (W / rect.width), y: (e.clientY - rect.top) * (H / rect.height) };
+  }
+  canvas.addEventListener('pointerdown', function (e) {
+    if (gameOver || selecting) return;
+    var p = pointerPos(e);
+    if (p.x < 46) {
+      if (storedSkills.length > 0) {
+        var idx = Math.floor((p.y - (H - storedSkills.length * 42) / 2) / 42);
+        if (idx >= 0 && idx < storedSkills.length) {
+          var st = storedSkills[idx];
+          storedSkills.splice(idx, 1);
+          if (st === 'specium') triggerSpecium();
+          else if (st === 'strium') triggerStrium();
+          else if (st === 'cutter') triggerCutter();
+        }
+      }
+      return;
+    }
+    dragging = true;
+    if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+    player.x = Math.max(20, Math.min(W - 20, p.x));
+    player.y = Math.max(H * 0.4, Math.min(H - 20, p.y));
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    var p = pointerPos(e);
+    player.x = Math.max(20, Math.min(W - 20, p.x));
+    player.y = Math.max(H * 0.4, Math.min(H - 20, p.y));
+  });
+  canvas.addEventListener('pointerup', function () { dragging = false; });
+  canvas.addEventListener('pointercancel', function () { dragging = false; });
+
+  function pickChoices() {
+    var pool = [];
+    for (var i = 0; i < SKILLS.length; i++) {
+      var s = SKILLS[i];
+      var cur = (s.id === 'shield') ? player.shield : (skillLevels[s.id] || 0);
+      if (s.max === 99 || cur < s.max) pool.push(s);
+    }
+    pool.sort(function () { return Math.random() - 0.5; });
+    var result = [];
+    for (var j = 0; j < 3 && j < pool.length; j++) result.push(pool[j].id);
+    return result;
+  }
+
+  function triggerUpgrade() {
+    choices = pickChoices();
+    if (choices.length === 0) { killCount = 0; return; }
+    selecting = true;
+  }
+
+  function applyChoice(id) {
+    for (var i = 0; i < SKILLS.length; i++) {
+      var s = SKILLS[i];
+      if (s.id !== id) continue;
+      if (s.id === 'shield') player.shield += 2;
+      else if (s.id === 'heal') lives = Math.min(5, lives + 1);
+      else skillLevels[s.id] = (skillLevels[s.id] || 0) + 1;
+    }
+    selecting = false;
+    choices = [];
+    killCount = 0;
+    upgradeCount++;
+  }
+
+  // 拾取技能球触发：斯派修姆光线
+  function triggerSpecium() {
+    beamActive = true;
+    beamAngle = -1.31; // 从左上开始扫射
+    beamGrow = 0;      // 光束从机身向外快速延伸
+    beamTextTimer = 1.6;
+    screenShake = 0.35;
+    for (var i = 0; i < enemies.length; i++) enemies[i].beamHit = false;
+    if (boss) boss.beamHit = false;
+  }
+
+  // 拾取技能球触发：斯特利姆光线（先机身五彩闪光，再发射 6 秒彩虹直射光束）
+  function triggerStrium() {
+    striumFlash = 0.7;       // 先闪光
+    striumActive = false;    // 闪光结束后再发射
+    striumGrow = 0;          // 光束从机身向外延伸（动画较慢）
+    striumTimer = 6;         // 光束持续 6 秒
+    striumTextTimer = 6.8;   // 名字显示
+    screenShake = 0.4;
+    if (boss) boss.striumHit = false;
+  }
+
+  // 拾取技能球触发：奥特断头刀（发射一道极宽的半月形光波向上飞出）
+  function triggerCutter() {
+    cutters.push({ x: player.x, y: player.y - 10, vy: -650, r: W * 0.4 });
+    cutterTextTimer = 1.6;
+    screenShake = 0.5;
+    for (var i = 0; i < enemies.length; i++) enemies[i].cutterHit = false;
+    if (boss) boss.cutterHit = false;
+  }
+
+  function fire() {
+    var n = 1 + skillLevels.triple * 2;
+    var center = (n - 1) / 2;
+    for (var i = 0; i < n; i++) {
+      var off = i - center;
+      bullets.push({ x: player.x, y: player.y - 22, vx: off * 130, vy: -520, pierce: skillLevels.pierce, dmg: bulletDamage() });
+    }
+    for (var s = 1; s <= skillLevels.spread; s++) {
+      bullets.push({ x: player.x, y: player.y - 22, vx: -230 * s, vy: -440, pierce: skillLevels.pierce, dmg: bulletDamage() });
+      bullets.push({ x: player.x, y: player.y - 22, vx: 230 * s, vy: -440, pierce: skillLevels.pierce, dmg: bulletDamage() });
+    }
+  }
+
+  function update(dt) {
+    playerFlash = Math.max(0, playerFlash - dt);
+    playerShake = Math.max(0, playerShake - dt);
+    screenShake = Math.max(0, screenShake - dt);
+    if (gameOver || selecting) return;
+
+    var spd = 320;
+    if (keys['arrowleft'] || keys['a']) player.x -= spd * dt;
+    if (keys['arrowright'] || keys['d']) player.x += spd * dt;
+    if (keys['arrowup'] || keys['w']) player.y -= spd * dt;
+    if (keys['arrowdown'] || keys['s']) player.y += spd * dt;
+    player.x = Math.max(20, Math.min(W - 20, player.x));
+    player.y = Math.max(H * 0.4, Math.min(H - 20, player.y));
+
+    shootTimer -= dt;
+    if (keys[' '] || dragging) {
+      if (shootTimer <= 0) { fire(); shootTimer = fireInterval(); }
+    } else {
+      shootTimer = Math.min(shootTimer, 0);
+    }
+
+    // 激光
+    laserFlash = Math.max(0, laserFlash - dt);
+    if (skillLevels.laser > 0) {
+      laserTimer -= dt;
+      if (laserTimer <= 0) {
+        laserTimer = laserCooldown();
+        laserFlash = 0.15;
+        for (var li = enemies.length - 1; li >= 0; li--) {
+          if (enemies[li].y < player.y && Math.abs(enemies[li].x - player.x) < laserWidth() / 2 + enemies[li].r) {
+            enemies[li].hp -= laserDamage();
+            enemies[li].flash = 0.1;
+            if (enemies[li].hp <= 0) {
+              var dead = enemies[li];
+              enemies.splice(li, 1);
+              registerKill(dead);
+            }
+          }
+        }
+        // 激光打 Boss
+        if (boss && boss.y > 0 && Math.abs(boss.x - player.x) < laserWidth() / 2 + boss.w / 2) {
+          boss.hp -= laserDamage();
+          boss.flash = 0.1;
+          if (boss.hp <= 0) killBoss();
+        }
+      }
+    }
+
+    // 斯派修姆光线：定期全屏扫射一圈
+    spaciumFlash = Math.max(0, spaciumFlash - dt);
+    if (skillLevels.spacium > 0) {
+      spaciumTimer -= dt;
+      if (spaciumTimer <= 0) {
+        spaciumTimer = spaciumCooldown();
+        spaciumFlash = 0.35;
+        var sc = 16 + skillLevels.spacium * 4;
+        for (var si = 0; si < sc; si++) {
+          var sang = (Math.PI * 2) * (si / sc);
+          bullets.push({ x: player.x, y: player.y, vx: Math.cos(sang) * 300, vy: Math.sin(sang) * 300, pierce: 0, dmg: 1 });
+        }
+      }
+    }
+
+    // 火焰喷射：喷出粒子并灼烧上方扇形区域
+    if (skillLevels.flame > 0) {
+      var fw = 45 + skillLevels.flame * 15;
+      for (var fp = 0; fp < 2; fp++) {
+        flameParticles.push({
+          x: player.x + (Math.random() - 0.5) * fw,
+          y: player.y - 10,
+          vx: (Math.random() - 0.5) * 60,
+          vy: -200 - Math.random() * 150,
+          life: 0.35 + Math.random() * 0.15,
+          r: 3 + Math.random() * 4
+        });
+      }
+      flameTimer -= dt;
+      if (flameTimer <= 0) {
+        flameTimer = 0.1;
+        var frange = 160 + skillLevels.flame * 50;
+        for (var fi = enemies.length - 1; fi >= 0; fi--) {
+          var fe = enemies[fi];
+          if (fe.y < player.y && player.y - fe.y < frange && Math.abs(fe.x - player.x) < fw + fe.r) {
+            fe.hp -= flameDamage();
+            fe.flash = 0.1;
+            if (fe.hp <= 0) { var fdead = fe; enemies.splice(fi, 1); registerKill(fdead); }
+          }
+        }
+      }
+    }
+
+    // 火焰粒子更新
+    for (var fpi = flameParticles.length - 1; fpi >= 0; fpi--) {
+      var fp2 = flameParticles[fpi];
+      fp2.x += fp2.vx * dt;
+      fp2.y += fp2.vy * dt;
+      fp2.life -= dt;
+      if (fp2.life <= 0 || fp2.y < 0) flameParticles.splice(fpi, 1);
+    }
+
+    // ===== 技能球：空中飘散、拾取触发 =====
+    orbSpawnTimer -= dt;
+    if (!boss && orbSpawnTimer <= 0) {
+      orbs.push({ x: 30 + Math.random() * (W - 60), y: -20, type: (function () { var r = Math.random(); return r < 0.34 ? 'specium' : (r < 0.67 ? 'strium' : 'cutter'); })(), phase: Math.random() * Math.PI * 2 });
+      orbSpawnTimer = 15 + Math.random() * 15;
+    }
+    for (var oi = orbs.length - 1; oi >= 0; oi--) {
+      var orb = orbs[oi];
+      orb.y += 50 * dt;
+      orb.phase += dt * 2;
+      if (orb.y > H + 30) { orbs.splice(oi, 1); continue; }
+      var ocx = orb.x + Math.sin(orb.phase) * 22;
+      var odx = ocx - player.x, ody = orb.y - player.y;
+      if (odx * odx + ody * ody < 26 * 26) {
+        if (storedSkills.length < 5) {
+          storedSkills.push(orb.type);
+        }
+        orbs.splice(oi, 1);
+      }
+    }
+
+    // ===== 斯派修姆光线：从左到右扇形扫射一次 =====
+    if (beamActive) {
+      beamAngle += 2.4 * dt;
+      if (beamAngle >= 1.31) beamActive = false;
+      beamGrow = Math.min(1, beamGrow + dt * 14); // 发射动画：几乎瞬间延伸
+      var halfW = 0.4; // 束宽（弧度）
+      for (var zi = enemies.length - 1; zi >= 0; zi--) {
+        var ze = enemies[zi];
+        var zdx = ze.x - player.x, zdy = ze.y - player.y;
+        if (zdy >= 0) continue; // 只打上方敌人
+        var za = Math.atan2(zdx, -zdy); // 相对“正上方”的角度
+        if (Math.abs(za - beamAngle) < halfW && !ze.beamHit) {
+          ze.beamHit = true;
+          ze.flash = 0.1;
+          if (ze.elite) ze.hp -= Math.ceil(ze.maxHp * 0.9); // 精英掉 90% 血
+          else ze.hp = 0; // 普通小兵秒杀
+          if (ze.hp <= 0) {
+            var zdead = ze;
+            enemies.splice(zi, 1);
+            registerKill(zdead);
+          }
+        }
+      }
+      // 斯派修姆光线打 Boss（每次扫射只结算一次）
+      if (boss && boss.y > 0 && !boss.beamHit) {
+        var bdx = boss.x - player.x, bdy = boss.y - player.y;
+        if (bdy < 0) {
+          var ba = Math.atan2(bdx, -bdy);
+          if (Math.abs(ba - beamAngle) < halfW + 0.35) {
+            boss.beamHit = true;
+            boss.hp -= Math.ceil(boss.maxHp * 0.25);
+            boss.flash = 0.1;
+            if (boss.hp <= 0) killBoss();
+          }
+        }
+      }
+    }
+    beamTextTimer = Math.max(0, beamTextTimer - dt);
+
+    // ===== 斯特利姆光线：先机身闪光，再发射 5 秒彩虹直射光束 =====
+    if (striumFlash > 0) {
+      striumFlash -= dt;
+      if (striumFlash <= 0) {
+        striumActive = true; // 闪光结束，开始发射
+        screenShake = 0.6;   // 发射瞬间震屏，增强力量感
+      }
+    }
+    if (striumActive) {
+      striumTimer -= dt;
+      striumGrow = Math.min(1, striumGrow + dt * (0.9 + striumGrow * 8)); // 发射动画：由慢到快加速延伸
+      var stHalfW = 22; // 束宽半宽
+      // 光束列内敌人持续受到高额伤害：普通小兵秒杀，精英约 1/3 秒击杀
+      for (var si2 = enemies.length - 1; si2 >= 0; si2--) {
+        var se = enemies[si2];
+        if (se.y < player.y && Math.abs(se.x - player.x) < stHalfW + se.r) {
+          se.flash = 0.1;
+          if (se.elite) se.hp -= Math.ceil(se.maxHp * 3) * dt; // 约 1/3 秒击杀
+          else se.hp = 0; // 秒杀
+          if (se.hp <= 0) {
+            var sdead = se;
+            enemies.splice(si2, 1);
+            registerKill(sdead);
+          }
+        }
+      }
+      // 打 Boss（每次释放只结算一次）
+      if (boss && boss.y > 0 && !boss.striumHit) {
+        if (boss.y < player.y && Math.abs(boss.x - player.x) < stHalfW + boss.w / 2) {
+          boss.striumHit = true;
+          boss.hp -= Math.ceil(boss.maxHp * 0.175);
+          boss.flash = 0.1;
+          if (boss.hp <= 0) killBoss();
+        }
+      }
+      if (striumTimer <= 0) striumActive = false;
+    }
+    striumTextTimer = Math.max(0, striumTextTimer - dt);
+
+    // ===== 奥特断头刀：半月形光波向上飞出 =====
+    for (var cwi = cutters.length - 1; cwi >= 0; cwi--) {
+      var cw = cutters[cwi];
+      cw.y += cw.vy * dt;
+      if (cw.y < -cw.r - 60) { cutters.splice(cwi, 1); continue; }
+      // 命中敌人（光波横向覆盖极宽）
+      for (var cei = enemies.length - 1; cei >= 0; cei--) {
+        var ce = enemies[cei];
+        if (!ce.cutterHit && ce.y < cw.y + 20 && ce.y > cw.y - cw.r - 20 && Math.abs(ce.x - cw.x) < cw.r + ce.r) {
+          ce.cutterHit = true;
+          ce.flash = 0.1;
+          if (ce.elite) ce.hp -= Math.ceil(ce.maxHp * 0.95); // 精英掉 95% 血
+          else ce.hp = 0; // 普通小兵秒杀
+          if (ce.hp <= 0) {
+            var cdead = ce;
+            enemies.splice(cei, 1);
+            registerKill(cdead);
+          }
+        }
+      }
+      // 打 Boss（每次释放只结算一次）
+      if (boss && boss.y > 0 && !boss.cutterHit) {
+        if (boss.y < cw.y + 20 && boss.y > cw.y - cw.r - 20 && Math.abs(boss.x - cw.x) < cw.r + boss.w / 2) {
+          boss.cutterHit = true;
+          boss.hp -= Math.ceil(boss.maxHp * 0.25);
+          boss.flash = 0.1;
+          if (boss.hp <= 0) killBoss();
+        }
+      }
+    }
+    cutterTextTimer = Math.max(0, cutterTextTimer - dt);
+
+    // 生成敌人：等级越高越频繁，但数量增长放缓（Boss 战期间暂停生成）
+    spawnTimer -= dt;
+    if (!boss && spawnTimer <= 0) {
+      var count = Math.min(2, 1 + Math.floor(level / 15));
+      for (var ci = 0; ci < count; ci++) {
+        spawnEnemy(20 + Math.random() * (W - 40), -30 - ci * 50);
+      }
+      spawnTimer = Math.max(0.75, 1.4 - level * 0.04);
+    }
+
+    // 敌人下落（关键：漏了这行就永远看不到敌人）
+    for (var ei = 0; ei < enemies.length; ei++) {
+      enemies[ei].y += enemies[ei].speed * dt;
+      if (enemies[ei].flash > 0) enemies[ei].flash -= dt;
+      // 橙色射击精英怪：进入屏幕后周期性向下直射子弹
+      if (enemies[ei].shooter && enemies[ei].y > 0 && enemies[ei].y < H) {
+        enemies[ei].shootTimer -= dt;
+        if (enemies[ei].shootTimer <= 0) {
+          enemies[ei].shootTimer = 1.3 + Math.random() * 0.9;
+          enemyBullets.push({ x: enemies[ei].x, y: enemies[ei].y + enemies[ei].r, vx: 0, vy: 170 + level * 4 });
+        }
+      }
+    }
+    // 子弹移动
+    for (var bj = 0; bj < bullets.length; bj++) {
+      bullets[bj].x += bullets[bj].vx * dt;
+      bullets[bj].y += bullets[bj].vy * dt;
+    }
+
+    // 子弹 vs 敌人（敌人有血量，命中先扣血）
+    for (var a = enemies.length - 1; a >= 0; a--) {
+      for (var b = bullets.length - 1; b >= 0; b--) {
+        var dx = enemies[a].x - bullets[b].x;
+        var dy = enemies[a].y - bullets[b].y;
+        var rr = enemies[a].r + 5;
+        if (dx * dx + dy * dy < rr * rr) {
+          enemies[a].hp -= bullets[b].dmg;
+          enemies[a].flash = 0.1;
+          if (bullets[b].pierce > 0) {
+            bullets[b].pierce--;
+            bullets[b].y = enemies[a].y - enemies[a].r - 6;
+          } else {
+            bullets.splice(b, 1);
+          }
+          if (enemies[a].hp <= 0) {
+            var dead = enemies[a];
+            enemies.splice(a, 1);
+            registerKill(dead);
+          }
+          break;
+        }
+      }
+    }
+
+    // 敌人 vs 玩家
+    for (var c = enemies.length - 1; c >= 0; c--) {
+      var dx2 = enemies[c].x - player.x;
+      var dy2 = enemies[c].y - player.y;
+      var rr2 = enemies[c].r + player.w / 2;
+      if (dx2 * dx2 + dy2 * dy2 < rr2 * rr2) {
+        enemies.splice(c, 1);
+        playerFlash = 0.3;
+        playerShake = 0.25;
+        screenShake = 0.3;
+        if (player.shield > 0) player.shield--;
+        else { lives--; if (lives <= 0) gameOver = true; }
+      }
+    }
+
+    // 子弹 vs Boss
+    if (boss && boss.y > 0) {
+      for (var bb = bullets.length - 1; bb >= 0; bb--) {
+        var pb = bullets[bb];
+        if (pb.x >= boss.x - boss.w / 2 && pb.x <= boss.x + boss.w / 2 && pb.y >= boss.y - boss.h / 2 && pb.y <= boss.y + boss.h / 2) {
+          boss.hp -= pb.dmg;
+          boss.flash = 0.1;
+          if (pb.pierce > 0) {
+            pb.pierce--;
+            pb.y = boss.y - boss.h / 2 - 6;
+          } else {
+            bullets.splice(bb, 1);
+          }
+          if (boss.hp <= 0) { killBoss(); break; }
+        }
+      }
+    }
+
+    // Boss 移动 + 发射子弹
+    if (boss) {
+      if (boss.entering) {
+        boss.y += 80 * dt;
+        if (boss.y >= 60) { boss.y = 60; boss.entering = false; }
+      } else {
+        boss.x += boss.dir * boss.speed * dt;
+        if (boss.x - boss.w / 2 < 10) { boss.x = 10 + boss.w / 2; boss.dir = 1; }
+        if (boss.x + boss.w / 2 > W - 10) { boss.x = W - 10 - boss.w / 2; boss.dir = -1; }
+        boss.shootTimer -= dt;
+        if (boss.shootTimer <= 0) {
+          boss.shootTimer = Math.max(0.7, 1.8 - level * 0.05 - Math.max(0, boss.tier - 2) * 0.15);
+          var bn = 2 + Math.floor(level / 8) + Math.max(0, boss.tier - 2);
+          var v = boss.variant;
+          var by = boss.y + boss.h / 2;
+          if (v === 0) {
+            // 直线弹幕：多列垂直子弹
+            for (var bi = 0; bi < bn; bi++) {
+              bossBullets.push({ x: boss.x - boss.w / 2 + (bi + 1) * (boss.w / (bn + 1)), y: by, vx: 0, vy: 140 + level * 4 });
+            }
+          } else if (v === 1) {
+            // 扇形散射：从中间向两侧斜射
+            var base = 140 + level * 4;
+            for (var bj = 0; bj < bn; bj++) {
+              bossBullets.push({ x: boss.x, y: by, vx: (bj - (bn - 1) / 2) * 90, vy: base });
+            }
+          } else {
+            // 瞄准玩家：多发子弹朝玩家飞
+            var sp = 160 + level * 4;
+            for (var bk = 0; bk < bn; bk++) {
+              var ang = Math.atan2(player.y - by, player.x - boss.x);
+              bossBullets.push({ x: boss.x, y: by, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp });
+            }
+          }
+        }
+      }
+      if (boss.flash > 0) boss.flash -= dt;
+    }
+
+    // Boss 子弹移动 & 撞玩家
+    for (var bbi = bossBullets.length - 1; bbi >= 0; bbi--) {
+      var bb2 = bossBullets[bbi];
+      bb2.x += bb2.vx * dt;
+      bb2.y += bb2.vy * dt;
+      if (bb2.y > H + 20 || bb2.x < -20 || bb2.x > W + 20) { bossBullets.splice(bbi, 1); continue; }
+      var ddx = bb2.x - player.x;
+      var ddy = bb2.y - player.y;
+      var pr = 6 + player.w / 2;
+      if (ddx * ddx + ddy * ddy < pr * pr) {
+        bossBullets.splice(bbi, 1);
+        playerFlash = 0.3;
+        playerShake = 0.25;
+        screenShake = 0.3;
+        if (player.shield > 0) player.shield--;
+        else { lives--; if (lives <= 0) gameOver = true; }
+      }
+    }
+
+    // 敌人直射子弹移动 & 撞玩家
+    for (var ebi = enemyBullets.length - 1; ebi >= 0; ebi--) {
+      var eb = enemyBullets[ebi];
+      eb.x += eb.vx * dt;
+      eb.y += eb.vy * dt;
+      if (eb.y > H + 20 || eb.x < -20 || eb.x > W + 20) { enemyBullets.splice(ebi, 1); continue; }
+      var edx = eb.x - player.x;
+      var edy = eb.y - player.y;
+      var epr = 5 + player.w / 2;
+      if (edx * edx + edy * edy < epr * epr) {
+        enemyBullets.splice(ebi, 1);
+        playerFlash = 0.3;
+        playerShake = 0.2;
+        screenShake = 0.2;
+        if (player.shield > 0) player.shield--;
+        else { lives--; if (lives <= 0) gameOver = true; }
+      }
+    }
+
+    enemies = enemies.filter(function (e) { return e.y < H + 40; });
+    bullets = bullets.filter(function (b) { return b.y > -10 && b.y < H + 20 && b.x > -20 && b.x < W + 20; });
+    level = Math.floor(score / 100) + 1;
+
+    // 在循环外触发 Boss（避免遍历 enemies 时清空数组导致崩溃）
+    if (pendingBoss) {
+      pendingBoss = false;
+      spawnBoss();
+    }
+
+    // ===== Boss 大爆炸 & 火花粒子更新 =====
+    for (var bexi = explosions.length - 1; bexi >= 0; bexi--) {
+      explosions[bexi].t += dt;
+      if (explosions[bexi].t >= 1.2) explosions.splice(bexi, 1);
+    }
+    for (var bspi = sparks.length - 1; bspi >= 0; bspi--) {
+      var bsp = sparks[bspi];
+      bsp.x += bsp.vx * dt;
+      bsp.y += bsp.vy * dt;
+      bsp.vx *= 0.985;
+      bsp.vy *= 0.985;
+      bsp.life -= dt;
+      if (bsp.life <= 0) sparks.splice(bspi, 1);
+    }
+
+    // Boss 击杀后：爆炸播完再触发一次选技能
+    if (bossDeathTimer > 0) {
+      bossDeathTimer -= dt;
+      if (bossDeathTimer <= 0) triggerUpgrade();
+    }
+
+    if (killCount >= killsNeeded()) triggerUpgrade();
+  }
+
+  function draw() {
+    var nowMs = Date.now();
+    // 宇宙背景：深蓝渐变
+    var bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#0b1030');
+    bg.addColorStop(0.5, '#0a0a24');
+    bg.addColorStop(1, '#05050f');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // 星云
+    var neb1 = ctx.createRadialGradient(W * 0.25, H * 0.3, 10, W * 0.25, H * 0.3, 210);
+    neb1.addColorStop(0, 'rgba(90,60,160,0.18)');
+    neb1.addColorStop(1, 'rgba(90,60,160,0)');
+    ctx.fillStyle = neb1;
+    ctx.fillRect(0, 0, W, H);
+    var neb2 = ctx.createRadialGradient(W * 0.8, H * 0.7, 10, W * 0.8, H * 0.7, 190);
+    neb2.addColorStop(0, 'rgba(40,90,150,0.15)');
+    neb2.addColorStop(1, 'rgba(40,90,150,0)');
+    ctx.fillStyle = neb2;
+    ctx.fillRect(0, 0, W, H);
+
+    // 星星：多层大小、闪烁、缓慢下坠
+    for (var si = 0; si < stars.length; si++) {
+      var st = stars[si];
+      var sty = (st.y + nowMs * 0.001 * st.sp) % H;
+      var tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(nowMs * 0.002 * st.sp + st.ph));
+      ctx.fillStyle = 'rgba(255,255,255,' + (tw * (0.5 + st.r * 0.3)) + ')';
+      ctx.beginPath();
+      ctx.arc(st.x, sty, st.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 画面轻微震动（受击时）
+    if (screenShake > 0) {
+      ctx.save();
+      ctx.translate((Math.random() - 0.5) * screenShake * 18, (Math.random() - 0.5) * screenShake * 18);
+    }
+
+    if (laserFlash > 0 && skillLevels.laser > 0) {
+      var w = laserWidth();
+      ctx.fillStyle = 'rgba(255,80,80,0.6)';
+      ctx.fillRect(player.x - w / 2, 0, w, player.y);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(player.x - 2, 0, 4, player.y);
+    }
+
+    // 斯派修姆光线：扩散光环
+    if (spaciumFlash > 0 && skillLevels.spacium > 0) {
+      var srad = 40 + (0.35 - spaciumFlash) * 500;
+      ctx.strokeStyle = 'rgba(180,200,255,0.8)';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, srad, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // ===== 斯派修姆光线（技能球触发）：蓝色激光束 =====
+    if (beamActive) {
+      var bLen = H * beamGrow; // 发射动画：从机身向外延伸
+      var bx0 = player.x, by0 = player.y - 10;
+      var dirX = Math.sin(beamAngle), dirY = -Math.cos(beamAngle);
+      var bx1 = bx0 + dirX * bLen, by1 = by0 + dirY * bLen;
+      ctx.strokeStyle = 'rgba(60,140,255,0.25)';
+      ctx.lineWidth = 44;
+      ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(bx1, by1); ctx.stroke();
+      ctx.strokeStyle = 'rgba(120,190,255,0.9)';
+      ctx.lineWidth = 26;
+      ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(bx1, by1); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = 10;
+      ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(bx1, by1); ctx.stroke();
+      ctx.fillStyle = 'rgba(180,220,255,0.95)';
+      ctx.beginPath(); ctx.arc(bx0, by0, 14, 0, Math.PI * 2); ctx.fill();
+    }
+    // 触发文字：斯派修姆光线
+    if (beamTextTimer > 0) {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 26px "Microsoft YaHei"';
+      ctx.fillStyle = 'rgba(150,205,255,' + Math.min(1, beamTextTimer) + ')';
+      ctx.fillText('斯派修姆光线', player.x, player.y - 70);
+      ctx.textAlign = 'left';
+    }
+
+    // ===== 斯特利姆光线（技能球触发）：五颜六色直线光束，持续 6 秒 =====
+    if (striumActive) {
+      var sLen = H * striumGrow; // 发射动画：从机身向外延伸（较慢）
+      var shx0 = player.x, shy0 = player.y - 10;
+      var shx1 = shx0, shy1 = shy0 - sLen; // 直线上射
+      var hue = (nowMs * 0.5) % 360;
+      ctx.globalCompositeOperation = 'lighter';
+      // 外层彩虹光晕
+      ctx.strokeStyle = 'hsla(' + hue + ',100%,55%,0.30)';
+      ctx.lineWidth = 59;
+      ctx.beginPath(); ctx.moveTo(shx0, shy0); ctx.lineTo(shx1, shy1); ctx.stroke();
+      // 中层：三段错位彩虹
+      ctx.strokeStyle = 'hsla(' + ((hue + 40) % 360) + ',100%,60%,0.55)';
+      ctx.lineWidth = 39;
+      ctx.beginPath(); ctx.moveTo(shx0, shy0); ctx.lineTo(shx1, shy1); ctx.stroke();
+      ctx.strokeStyle = 'hsla(' + ((hue + 200) % 360) + ',100%,65%,0.55)';
+      ctx.lineWidth = 26;
+      ctx.beginPath(); ctx.moveTo(shx0 - 7, shy0); ctx.lineTo(shx1 - 7, shy1); ctx.stroke();
+      // 核心
+      ctx.strokeStyle = 'hsla(' + ((hue + 120) % 360) + ',100%,70%,0.9)';
+      ctx.lineWidth = 15;
+      ctx.beginPath(); ctx.moveTo(shx0, shy0); ctx.lineTo(shx1, shy1); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(shx0, shy0); ctx.lineTo(shx1, shy1); ctx.stroke();
+      ctx.fillStyle = 'hsla(' + hue + ',100%,75%,0.95)';
+      ctx.beginPath(); ctx.arc(shx0, shy0, 18, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    // 触发文字：斯特利姆光线
+    if (striumTextTimer > 0) {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 26px "Microsoft YaHei"';
+      ctx.fillStyle = 'hsla(' + ((nowMs * 0.5) % 360) + ',100%,70%,' + Math.min(1, striumTextTimer) + ')';
+      ctx.fillText('斯特利姆光线', player.x, player.y - 70);
+      ctx.textAlign = 'left';
+    }
+
+    // ===== 奥特断头刀：极宽半月形光波向上飞出 =====
+    for (var cj = 0; cj < cutters.length; cj++) {
+      var cw2 = cutters[cj];
+      ctx.save();
+      ctx.translate(cw2.x, cw2.y);
+      ctx.globalCompositeOperation = 'lighter';
+      // 外发光（月牙）
+      ctx.fillStyle = 'rgba(110,210,255,0.30)';
+      ctx.beginPath();
+      ctx.arc(0, 0, cw2.r + 14, Math.PI, 0, false);
+      ctx.arc(0, cw2.r + 14, (cw2.r + 14) * 1.4142, -Math.PI / 4, -3 * Math.PI / 4, true);
+      ctx.closePath(); ctx.fill();
+      // 主体月牙（凸面朝上、两端尖、中间空心）
+      ctx.fillStyle = 'rgba(170,230,255,0.9)';
+      ctx.beginPath();
+      ctx.arc(0, 0, cw2.r, Math.PI, 0, false);
+      ctx.arc(0, cw2.r, cw2.r * 1.4142, -Math.PI / 4, -3 * Math.PI / 4, true);
+      ctx.closePath(); ctx.fill();
+      // 外弧白色亮边
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(0, 0, cw2.r, Math.PI, 0, false); ctx.stroke();
+      // 内弧淡蓝边
+      ctx.strokeStyle = 'rgba(120,220,255,0.7)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, cw2.r, cw2.r * 1.4142, -Math.PI / 4, -3 * Math.PI / 4, true); ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.restore();
+    }
+    // 触发文字：奥特断头刀
+    if (cutterTextTimer > 0) {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 26px "Microsoft YaHei"';
+      ctx.fillStyle = 'rgba(170,235,255,' + Math.min(1, cutterTextTimer) + ')';
+      ctx.fillText('奥特断头刀', player.x, player.y - 70);
+      ctx.textAlign = 'left';
+    }
+
+    // 火焰喷射：粒子
+    for (var fpi2 = 0; fpi2 < flameParticles.length; fpi2++) {
+      var fp3 = flameParticles[fpi2];
+      var fa = Math.max(0, fp3.life / 0.5);
+      ctx.fillStyle = 'rgba(255,' + Math.floor(120 + fa * 90) + ',30,' + fa + ')';
+      ctx.beginPath();
+      ctx.arc(fp3.x, fp3.y, fp3.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.save();
+    var pjx = playerShake > 0 ? (Math.random() - 0.5) * playerShake * 28 : 0;
+    var pjy = playerShake > 0 ? (Math.random() - 0.5) * playerShake * 28 : 0;
+    ctx.translate(player.x + pjx, player.y + pjy);
+
+    // 受击闪烁
+    var blink = 1;
+    if (playerFlash > 0) blink = (Math.floor(nowMs / 55) % 2 === 0) ? 0.2 : 1;
+    ctx.globalAlpha = blink;
+
+    // 引擎尾焰（柔和跳动）
+    var flick = Math.sin(nowMs * 0.03) * 3;
+    ctx.fillStyle = 'rgba(255,170,50,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(-6, 16); ctx.lineTo(0, 26 + flick); ctx.lineTo(6, 16);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,80,30,0.7)';
+    ctx.beginPath();
+    ctx.moveTo(-3, 16); ctx.lineTo(0, 22 + flick * 0.5); ctx.lineTo(3, 16);
+    ctx.closePath(); ctx.fill();
+
+    // 机翼
+    ctx.fillStyle = '#1f5fd6';
+    ctx.beginPath();
+    ctx.moveTo(0, -18); ctx.lineTo(7, -2); ctx.lineTo(20, 12); ctx.lineTo(9, 12); ctx.lineTo(0, 8);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, -18); ctx.lineTo(-7, -2); ctx.lineTo(-20, 12); ctx.lineTo(-9, 12); ctx.lineTo(0, 8);
+    ctx.closePath(); ctx.fill();
+
+    // 机身
+    ctx.fillStyle = '#eaf6ff';
+    ctx.beginPath();
+    ctx.moveTo(0, -22); ctx.lineTo(5, -4); ctx.lineTo(5, 12); ctx.lineTo(0, 16); ctx.lineTo(-5, 12); ctx.lineTo(-5, -4);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(0,40,90,0.25)';
+    ctx.fillRect(-5, 6, 10, 6);
+
+    // 驾驶舱
+    ctx.fillStyle = '#4db8ff';
+    ctx.beginPath();
+    ctx.arc(0, -4, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 机炮
+    ctx.fillStyle = '#ffd76f';
+    ctx.fillRect(-2, -27, 4, 6);
+
+    if (player.shield > 0) {
+      ctx.strokeStyle = 'rgba(120,255,180,0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, 28, 0, Math.PI * 2); ctx.stroke();
+      // 外层光环：随护盾轻微脉动
+      var pulse = 1 + Math.sin(nowMs * 0.005) * 0.12;
+      ctx.strokeStyle = 'rgba(120,255,180,0.35)';
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(0, 0, 34 * pulse, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(140,255,200,0.15)';
+      ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.arc(0, 0, 40 * pulse, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+
+    // ===== 斯特利姆光线：玩家机身五颜六色闪光（发射前）=====
+    if (striumFlash > 0) {
+      var fk = striumFlash / 0.7;
+      var fh = (nowMs * 0.6) % 360;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = 'hsla(' + fh + ',100%,60%,' + (0.45 * fk) + ')';
+      ctx.beginPath(); ctx.arc(player.x, player.y, 36 + (1 - fk) * 18, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'hsla(' + ((fh + 120) % 360) + ',100%,65%,' + (0.7 * fk) + ')';
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(player.x, player.y, 42, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = 'hsla(' + ((fh + 240) % 360) + ',100%,65%,' + (0.7 * fk) + ')';
+      ctx.beginPath(); ctx.arc(player.x, player.y, 50, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    ctx.fillStyle = '#ff0';
+    for (var b2 = 0; b2 < bullets.length; b2++) ctx.fillRect(bullets[b2].x - 2, bullets[b2].y - 6, 4, 12);
+
+    for (var e2 = 0; e2 < enemies.length; e2++) {
+      var e = enemies[e2];
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.scale(e.r / 16, e.r / 16);
+
+      var ebody = e.shooter ? '#ff8c1a' : (e.elite ? '#c05cff' : '#ff5555');
+      var ewing = e.shooter ? '#c85a10' : (e.elite ? '#7a2bd6' : '#cc1f3d');
+      if (e.flash > 0) { ebody = '#ffffff'; ewing = '#ffffff'; }
+
+      // 引擎尾焰（朝上，因为敌机向下飞）
+      ctx.fillStyle = 'rgba(255,160,50,0.65)';
+      ctx.beginPath(); ctx.arc(0, -14, 3.5, 0, Math.PI * 2); ctx.fill();
+
+      // 机翼
+      ctx.fillStyle = ewing;
+      ctx.beginPath();
+      ctx.moveTo(0, -14); ctx.lineTo(15, 8); ctx.lineTo(8, 12); ctx.lineTo(0, 7);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(0, -14); ctx.lineTo(-15, 8); ctx.lineTo(-8, 12); ctx.lineTo(0, 7);
+      ctx.closePath(); ctx.fill();
+
+      // 机身
+      ctx.fillStyle = ebody;
+      ctx.beginPath();
+      ctx.moveTo(0, -14); ctx.lineTo(6, 0); ctx.lineTo(4, 12); ctx.lineTo(0, 16); ctx.lineTo(-4, 12); ctx.lineTo(-6, 0);
+      ctx.closePath(); ctx.fill();
+
+      // 眼睛/核心
+      ctx.fillStyle = e.flash > 0 ? '#ffffff' : '#ffe08a';
+      ctx.beginPath(); ctx.arc(0, 1, 4, 0, Math.PI * 2); ctx.fill();
+      if (e.elite) {
+        // 精英怪光环
+        ctx.strokeStyle = e.shooter ? '#ffc266' : '#ffe08a';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI * 2); ctx.stroke();
+      }
+
+      ctx.restore();
+      // 血条（血量大于 1 才显示）
+      if (e.maxHp > 1) {
+        var bw = e.r * 2, bh = 4, bx = e.x - bw / 2, by = e.y + e.r + 6;
+        ctx.fillStyle = '#333';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = e.shooter ? '#ff9a3c' : (e.elite ? '#c05cff' : '#ff6666');
+        ctx.fillRect(bx, by, bw * Math.max(0, e.hp / e.maxHp), bh);
+      }
+    }
+
+    // 技能球
+    for (var oi2 = 0; oi2 < orbs.length; oi2++) {
+      var orb2 = orbs[oi2];
+      var cx2 = orb2.x + Math.sin(orb2.phase) * 22;
+      var isStrium = orb2.type === 'strium';
+      var isCutter = orb2.type === 'cutter';
+      var orbHue = isStrium ? ((nowMs * 0.5) % 360) : (isCutter ? 230 : 185);
+      var og = ctx.createRadialGradient(cx2, orb2.y, 2, cx2, orb2.y, 26);
+      og.addColorStop(0, 'hsla(' + orbHue + ',100%,70%,0.9)');
+      og.addColorStop(1, 'hsla(' + orbHue + ',100%,60%,0)');
+      ctx.fillStyle = og;
+      ctx.beginPath(); ctx.arc(cx2, orb2.y, 26, 0, Math.PI * 2); ctx.fill();
+      var ring = 22 + Math.sin(nowMs * 0.006 + orb2.phase) * 4;
+      ctx.strokeStyle = 'hsla(' + orbHue + ',100%,80%,0.9)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx2, orb2.y, ring, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = 'hsla(' + orbHue + ',60%,16%,1)';
+      ctx.beginPath(); ctx.arc(cx2, orb2.y, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'hsla(' + orbHue + ',100%,65%,0.9)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx2, orb2.y, 14, 0, Math.PI * 2); ctx.stroke();
+      ctx.font = '18px "Segoe UI Emoji", "Microsoft YaHei"';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff';
+      ctx.fillText('⚡', cx2, orb2.y + 1);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    // Boss 子弹
+    ctx.fillStyle = '#ff6644';
+    for (var bbi2 = 0; bbi2 < bossBullets.length; bbi2++) {
+      ctx.beginPath();
+      ctx.arc(bossBullets[bbi2].x, bossBullets[bbi2].y, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 橙色精英怪直射子弹
+    ctx.fillStyle = '#ffb347';
+    for (var ebi2 = 0; ebi2 < enemyBullets.length; ebi2++) {
+      ctx.beginPath();
+      ctx.arc(enemyBullets[ebi2].x, enemyBullets[ebi2].y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Boss
+    if (boss) {
+      ctx.save();
+      var bx = boss.x, by = boss.y, bw = boss.w, bh = boss.h;
+      var bv = boss.variant;
+      var bodyC = boss.flash > 0 ? '#ffffff' : boss.color;
+      if (bv === 0) {
+        // 战舰型：装甲舰体 + 引擎 + 炮塔
+        ctx.fillStyle = 'rgba(255,160,50,0.5)';
+        for (var gi = 0; gi < 5; gi++) {
+          ctx.beginPath();
+          ctx.arc(bx - bw / 2 + bw * (gi + 1) / 6, by - bh / 2 - 2, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = bodyC;
+        ctx.fillRect(bx - bw / 2, by - bh / 2, bw, bh);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(bx - bw / 2, by - bh / 2, bw, bh * 0.35);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(bx - bw / 2, by - bh * 0.08, bw, 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fillRect(bx - bw / 2 + 8, by - 2, 28, 22);
+        ctx.fillRect(bx + bw / 2 - 36, by - 2, 28, 22);
+        ctx.fillStyle = '#ffd76f';
+        ctx.fillRect(bx - bw / 2 + 14, by + bh / 2 - 4, 8, 16);
+        ctx.fillRect(bx + bw / 2 - 22, by + bh / 2 - 4, 8, 16);
+        ctx.fillRect(bx - 4, by + bh / 2 - 4, 8, 20);
+        ctx.fillStyle = '#ffd76f';
+        ctx.beginPath();
+        ctx.arc(bx, by - 4, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(bx, by - 4, 5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (bv === 1) {
+        // 三角飞镖型：倒三角 + 侧翼 + 核心
+        ctx.fillStyle = 'rgba(255,160,50,0.5)';
+        ctx.beginPath(); ctx.arc(bx - bw / 4, by - bh / 2, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(bx + bw / 4, by - bh / 2, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = bodyC;
+        ctx.beginPath();
+        ctx.moveTo(bx, by + bh / 2);
+        ctx.lineTo(bx - bw / 2, by - bh / 2);
+        ctx.lineTo(bx + bw / 2, by - bh / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(bx - bw / 2, by - bh / 2, bw, bh * 0.4);
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.moveTo(bx - bw / 2, by - bh / 2); ctx.lineTo(bx - bw / 2 - 16, by + bh * 0.1); ctx.lineTo(bx - bw / 2 + 10, by + bh * 0.18); ctx.closePath(); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(bx + bw / 2, by - bh / 2); ctx.lineTo(bx + bw / 2 + 16, by + bh * 0.1); ctx.lineTo(bx + bw / 2 - 10, by + bh * 0.18); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ffd76f';
+        ctx.beginPath(); ctx.arc(bx, by, 13, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(bx, by, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffd76f';
+        ctx.beginPath();
+        ctx.moveTo(bx - 6, by + bh / 2 - 12); ctx.lineTo(bx, by + bh / 2); ctx.lineTo(bx + 6, by + bh / 2 - 12);
+        ctx.closePath(); ctx.fill();
+      } else {
+        // 飞碟型：玻璃穹顶 + 舷窗 + 引擎光
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.beginPath();
+        ctx.ellipse(bx, by - bh * 0.12, bw * 0.3, bh * 0.42, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = bodyC;
+        ctx.beginPath();
+        ctx.ellipse(bx, by, bw / 2, bh / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath();
+        ctx.ellipse(bx, by + bh * 0.14, bw / 2, bh * 0.3, 0, 0, Math.PI);
+        ctx.fill();
+        ctx.fillStyle = '#ffd76f';
+        for (var li2 = 0; li2 < 6; li2++) {
+          ctx.beginPath();
+          ctx.arc(bx - bw * 0.35 + li2 * bw * 0.7 / 5, by + 2, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = 'rgba(120,220,255,0.7)';
+        ctx.beginPath();
+        ctx.ellipse(bx, by + bh * 0.34, bw * 0.22, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      // Boss 血条
+      var bbw = W - 80, bbh = 12, bbx = 40, bby = 95;
+      ctx.fillStyle = '#333';
+      ctx.fillRect(bbx, bby, bbw, bbh);
+      ctx.fillStyle = '#ff4455';
+      ctx.fillRect(bbx, bby, bbw * Math.max(0, boss.hp / boss.maxHp), bbh);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px "Microsoft YaHei"';
+      ctx.textAlign = 'center';
+      ctx.fillText('BOSS', W / 2, bby - 6);
+      ctx.textAlign = 'left';
+    }
+
+    // ===== Boss 大爆炸特效 =====
+    for (var bexj = 0; bexj < explosions.length; bexj++) {
+      var bex = explosions[bexj];
+      var ep = Math.min(1, bex.t / 1.2);
+      var ea = 1 - ep;
+      ctx.globalCompositeOperation = 'lighter';
+      var fr = 18 + ep * 220;
+      var eg = ctx.createRadialGradient(bex.x, bex.y, 0, bex.x, bex.y, fr);
+      eg.addColorStop(0, 'rgba(255,255,235,' + ea + ')');
+      eg.addColorStop(0.4, 'rgba(255,190,70,' + (ea * 0.85) + ')');
+      eg.addColorStop(1, 'rgba(255,60,20,0)');
+      ctx.fillStyle = eg;
+      ctx.beginPath(); ctx.arc(bex.x, bex.y, fr, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,225,160,' + (ea * 0.9) + ')';
+      ctx.lineWidth = 2 + 8 * (1 - ep);
+      ctx.beginPath(); ctx.arc(bex.x, bex.y, 16 + ep * 190, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(160,200,255,' + (ea * 0.6) + ')';
+      ctx.lineWidth = 2 + 5 * (1 - ep);
+      ctx.beginPath(); ctx.arc(bex.x, bex.y, 10 + ep * 150, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    for (var bspj = 0; bspj < sparks.length; bspj++) {
+      var bsp2 = sparks[bspj];
+      ctx.globalAlpha = Math.max(0, Math.min(1, bsp2.life / 0.6));
+      ctx.fillStyle = bsp2.color;
+      ctx.fillRect(bsp2.x - 2, bsp2.y - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    if (screenShake > 0) ctx.restore();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = '16px "Microsoft YaHei"';
+    ctx.fillText('分数: ' + score, 12, 24);
+    // 生命：爱心（最多 5 颗，回血可超过 3）
+    for (var hi = 0; hi < 5; hi++) {
+      ctx.fillStyle = hi < lives ? '#ff4d6d' : 'rgba(255,255,255,0.16)';
+      ctx.font = '18px "Microsoft YaHei"';
+      ctx.fillText(hi < lives ? '♥' : '♡', 12 + hi * 20, 50);
+    }
+    ctx.fillStyle = '#fff';
+    ctx.font = '16px "Microsoft YaHei"';
+    ctx.fillText('波次: ' + wave, 12, 74);
+    if (player.shield > 0) ctx.fillText('护盾: ' + player.shield, 12, 96);
+    ctx.fillText('关卡: ' + level, W - 80, 24);
+    ctx.fillText('击杀: ' + killCount + '/' + killsNeeded(), W - 80, 48);
+
+    ctx.font = '14px "Microsoft YaHei"';
+    ctx.textAlign = 'right';
+    var line = 0;
+    for (var si = 0; si < SKILLS.length; si++) {
+      var s = SKILLS[si];
+      var lv = skillLevels[s.id] || 0;
+      if (lv > 0) {
+        ctx.fillStyle = '#8fd7ff';
+        ctx.fillText(s.icon + ' ' + s.name + ' Lv.' + lv, W - 12, 68 + line * 20);
+        line++;
+      }
+    }
+    ctx.textAlign = 'left';
+
+    if (selecting) {
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffd76f';
+      ctx.font = 'bold 30px "Microsoft YaHei"';
+      ctx.fillText('升级！选择技能', W / 2, 100);
+      for (var ci = 0; ci < choices.length; ci++) {
+        var sk = null;
+        for (var fi = 0; fi < SKILLS.length; fi++) if (SKILLS[fi].id === choices[ci]) sk = SKILLS[fi];
+        if (!sk) continue;
+        var cx = W / 2, cy = 200 + ci * 130;
+        ctx.fillStyle = '#1a2a3a';
+        ctx.fillRect(cx - 160, cy - 40, 320, 80);
+        ctx.strokeStyle = '#4db8ff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cx - 160, cy - 40, 320, 80);
+        ctx.fillStyle = '#4db8ff';
+        ctx.font = 'bold 20px "Microsoft YaHei"';
+        ctx.fillText((ci + 1) + '.', cx - 138, cy + 8);
+        ctx.fillStyle = '#fff';
+        ctx.font = '22px "Segoe UI Emoji", "Microsoft YaHei"';
+        ctx.fillText(sk.icon, cx - 104, cy + 10);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 22px "Microsoft YaHei"';
+        ctx.fillText(sk.name, cx - 52, cy + 2);
+        ctx.fillStyle = '#aaa';
+        ctx.font = '14px "Microsoft YaHei"';
+        ctx.fillText(sk.desc, cx + 36, cy + 22);
+      }
+      ctx.textAlign = 'left';
+    }
+
+    // ===== 左侧技能栏：已拾取待释放的大招 =====
+    if (!selecting && !gameOver && storedSkills.length > 0) {
+      for (var sqi = 0; sqi < storedSkills.length; sqi++) {
+        var sk = storedSkills[sqi];
+        var syy = (H - storedSkills.length * 42) / 2 + sqi * 42;
+        var hue2 = sk === 'strium' ? ((nowMs * 0.5) % 360) : (sk === 'cutter' ? 230 : 185);
+        ctx.fillStyle = 'rgba(8,12,24,0.8)';
+        ctx.fillRect(2, syy, 42, 38);
+        ctx.strokeStyle = 'hsla(' + hue2 + ',100%,65%,0.95)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(2, syy, 42, 38);
+        ctx.fillStyle = 'hsla(' + hue2 + ',90%,55%,0.9)';
+        ctx.beginPath();
+        ctx.arc(23, syy + 19, 13, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 15px "Microsoft YaHei"';
+        ctx.textAlign = 'center';
+        ctx.fillText(sk === 'specium' ? '斯' : (sk === 'strium' ? '特' : '断'), 23, syy + 24);
+        ctx.textAlign = 'left';
+      }
+    }
+
+    if (gameOver) {
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#f66';
+      ctx.font = 'bold 40px "Microsoft YaHei"';
+      ctx.textAlign = 'center';
+      ctx.fillText('游戏结束', W / 2, H / 2 - 20);
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px "Microsoft YaHei"';
+      ctx.fillText('最终分数: ' + score, W / 2, H / 2 + 30);
+      ctx.fillText('按 R 或点屏幕 重新开始', W / 2, H / 2 + 70);
+      ctx.textAlign = 'left';
+    }
+  }
+
+  var lastTime = Date.now();
+  function loop() {
+    var now = Date.now();
+    var dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    if (started) {
+      update(dt);
+      draw();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- 8-bit 小游戏 BGM（Web Audio 合成，无需外部文件） ----------
+  var audioCtx = null;
+  var musicTimer = null;
+  var musicStep = 0;
+  var musicNextTime = 0;
+  var STEP_DUR = 60 / 140 / 4; // 140 BPM，每步 16 分音符
+
+  function noteFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+  // 主旋律（midi 音高，-1 = 休止）
+  var LEAD = [
+    72,76,79,76, 72,76,79,84,  83,79,76,79,  72,69,67,69,
+    74,77,81,77, 74,77,81,84,  83,81,79,81,  76,72,69,67
+  ];
+  // 低音（每拍一个根音）
+  var BASS = [
+    48,-1,-1,-1, 55,-1,-1,-1,  45,-1,-1,-1, 52,-1,-1,-1,
+    50,-1,-1,-1, 57,-1,-1,-1,  45,-1,-1,-1, 52,-1,-1,-1
+  ];
+
+  function playNote(type, freq, time, dur, vol) {
+    if (!audioCtx) return;
+    var osc = audioCtx.createOscillator();
+    var g = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0, time);
+    g.gain.linearRampToValueAtTime(vol, time + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    osc.connect(g);
+    g.connect(audioCtx.destination);
+    osc.start(time);
+    osc.stop(time + dur + 0.02);
+  }
+
+  function scheduleStep(step, time) {
+    var m = LEAD[step % LEAD.length];
+    if (m >= 0) playNote('square', noteFreq(m), time, 0.11, 0.14);
+    var b = BASS[step % BASS.length];
+    if (b >= 0) playNote('triangle', noteFreq(b), time, 0.17, 0.2);
+  }
+
+  function startMusic() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (musicTimer) return;
+    musicStep = 0;
+    musicNextTime = audioCtx.currentTime + 0.05;
+    musicTimer = setInterval(function () {
+      while (musicNextTime < audioCtx.currentTime + 0.15) {
+        scheduleStep(musicStep, musicNextTime);
+        musicStep++;
+        musicNextTime += STEP_DUR;
+      }
+    }, 50);
+  }
+
+  function stopMusic() {
+    if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+  }
+
+  var startBtn = document.getElementById('startBtn');
+  var musicBtn = document.getElementById('musicBtn');
+  var menuEl = document.getElementById('menu');
+
+  startBtn.addEventListener('click', function () {
+    menuEl.style.display = 'none';
+    started = true;
+    reset();
+    if (musicOn) startMusic();
+  });
+
+  musicBtn.addEventListener('click', function () {
+    musicOn = !musicOn;
+    musicBtn.textContent = musicOn ? '♪ 音乐：开' : '♪ 音乐：关';
+    if (musicOn) { startMusic(); } else { stopMusic(); }
+  });
+
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
