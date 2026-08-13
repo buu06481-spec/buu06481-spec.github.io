@@ -165,3 +165,18 @@ a:hover { color: var(--primary-hover); }
   .about-grid { grid-template-columns: 1fr; }
   .hero-name { font-size: 1.7rem; }
 }
+
+/* Article */
+.article-wrap { max-width: 780px; padding-top: 60px; padding-bottom: 80px; }
+.article { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 44px; box-shadow: var(--shadow); }
+.article-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.article-title { font-size: 1.9rem; line-height: 1.3; margin-bottom: 24px; }
+.article-content p { margin-bottom: 18px; font-size: 1.05rem; }
+.article-content h2 { font-size: 1.3rem; margin: 28px 0 12px; }
+.article-content ul { margin: 0 0 18px 22px; }
+.article-content li { margin-bottom: 8px; }
+.article .btn { display: inline-block; margin-top: 26px; }
+@media (max-width: 720px) {
+  .article { padding: 24px 20px; }
+  .article-title { font-size: 1.5rem; }
+}
