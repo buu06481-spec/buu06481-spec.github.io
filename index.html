@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="个人博客主页 — 记录技术、生活与思考" />
+  <title>我的个人主页</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#top" class="logo">🪐 我的博客</a>
+      <nav class="main-nav" id="mainNav">
+        <a href="#home">首页</a>
+        <a href="#about">关于</a>
+        <a href="#posts">文章</a>
+        <a href="#tags">标签</a>
+        <a href="#contact">联系</a>
+      </nav>
+      <div class="header-actions">
+        <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="菜单">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- Hero -->
+    <section class="hero" id="home">
+      <div class="container hero-inner">
+        <img class="avatar" src="https://api.dicebear.com/7.x/thumbs/svg?seed=blog" alt="头像" />
+        <h1 class="hero-name">你好，我是 <span class="highlight">你的名字</span></h1>
+        <p class="hero-title">前端开发工程师 · 终身学习者 · 偶尔写作</p>
+        <p class="hero-desc">
+          欢迎来到我的个人主页。我在这里分享技术心得、读书笔记与生活感悟，
+          希望这些文字能对你有所帮助。
+        </p>
+        <div class="hero-btns">
+          <a class="btn btn-primary" href="#posts">阅读文章</a>
+          <a class="btn btn-ghost" href="#contact">联系我</a>
+        </div>
+        <div class="hero-social">
+          <a href="#" aria-label="GitHub">GitHub</a>
+          <a href="#" aria-label="微博">微博</a>
+          <a href="#" aria-label="邮箱">邮箱</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- About -->
+    <section class="section" id="about">
+      <div class="container">
+        <h2 class="section-title">关于我</h2>
+        <div class="about-grid">
+          <div class="about-card">
+            <p>
+              我是一名热爱技术的开发者，专注于 Web 前端领域。工作之余喜欢阅读、写作与摄影，
+              相信「输出是最好的学习」。这个博客记录了我的成长轨迹与思考。
+            </p>
+            <ul class="about-list">
+              <li>📍 坐标：中国 · 北京</li>
+              <li>💼 职业：前端开发工程师</li>
+              <li>📚 兴趣：技术、阅读、摄影</li>
+            </ul>
+          </div>
+          <div class="about-card">
+            <h3>技能栈</h3>
+            <div class="skills">
+              <span class="skill">JavaScript</span>
+              <span class="skill">TypeScript</span>
+              <span class="skill">Vue</span>
+              <span class="skill">React</span>
+              <span class="skill">Node.js</span>
+              <span class="skill">CSS</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Posts -->
+    <section class="section" id="posts">
+      <div class="container">
+        <h2 class="section-title">最新文章</h2>
+        <div class="posts-grid" id="postsGrid"><!-- 由 JS 渲染 --></div>
+      </div>
+    </section>
+
+    <!-- Tags -->
+    <section class="section" id="tags">
+      <div class="container">
+        <h2 class="section-title">标签云</h2>
+        <div class="tags-cloud" id="tagsCloud"></div>
+      </div>
+    </section>
+
+    <!-- Contact -->
+    <section class="section" id="contact">
+      <div class="container">
+        <h2 class="section-title">联系我</h2>
+        <p class="contact-text">有任何问题或想法，欢迎通过以下方式找到我 👇</p>
+        <div class="contact-links">
+          <a class="contact-link" href="mailto:you@example.com">📧 you@example.com</a>
+          <a class="contact-link" href="#">🐙 GitHub</a>
+          <a class="contact-link" href="#">💬 公众号</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>© 2024 你的名字 · 用 ❤️ 编写</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
