@@ -169,6 +169,10 @@ a:hover { color: var(--primary-hover); }
   border-radius: var(--radius); background: #0a0a1a;
 }
 
+/* Comments */
+.comments-container { max-width: 780px; }
+.giscus-wrap { margin-top: 8px; }
+
 /* Footer */
 .site-footer { border-top: 1px solid var(--border); padding: 28px 0; text-align: center; color: var(--text-muted); font-size: 0.9rem; }
 
