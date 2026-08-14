@@ -250,9 +250,9 @@
     var p = pointerPos(e);
     downX = p.x; downY = p.y; didDrag = false;
     if (selecting) return;
-    if (p.x < 46) {
+    if (p.x < 50) {
       if (storedSkills.length > 0) {
-        var idx = Math.floor((p.y - (H - storedSkills.length * 42) / 2) / 42);
+        var idx = Math.floor((p.y - (H - storedSkills.length * 52) / 2) / 52);
         if (idx >= 0 && idx < storedSkills.length) {
           var st = storedSkills[idx];
           storedSkills.splice(idx, 1);
@@ -1336,21 +1336,22 @@
     if (!selecting && !gameOver && storedSkills.length > 0) {
       for (var sqi = 0; sqi < storedSkills.length; sqi++) {
         var sk = storedSkills[sqi];
-        var syy = (H - storedSkills.length * 42) / 2 + sqi * 42;
+        var syy = (H - storedSkills.length * 52) / 2 + sqi * 52;
         var hue2 = sk === 'strium' ? ((nowMs * 0.5) % 360) : (sk === 'cutter' ? 230 : 185);
+        var ico = sk === 'specium' ? '⚡' : (sk === 'strium' ? '💫' : '⚔️');
         ctx.fillStyle = 'rgba(8,12,24,0.8)';
-        ctx.fillRect(2, syy, 42, 38);
+        ctx.fillRect(2, syy, 46, 40);
         ctx.strokeStyle = 'hsla(' + hue2 + ',100%,65%,0.95)';
         ctx.lineWidth = 2;
-        ctx.strokeRect(2, syy, 42, 38);
+        ctx.strokeRect(2, syy, 46, 40);
         ctx.fillStyle = 'hsla(' + hue2 + ',90%,55%,0.9)';
         ctx.beginPath();
-        ctx.arc(23, syy + 19, 13, 0, Math.PI * 2);
+        ctx.arc(25, syy + 20, 15, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 15px "Microsoft YaHei"';
+        ctx.font = '18px "Segoe UI Emoji", "Microsoft YaHei"';
         ctx.textAlign = 'center';
-        ctx.fillText(sk === 'specium' ? '斯' : (sk === 'strium' ? '特' : '断'), 23, syy + 24);
+        ctx.fillText(ico, 25, syy + 26);
         ctx.textAlign = 'left';
       }
     }
