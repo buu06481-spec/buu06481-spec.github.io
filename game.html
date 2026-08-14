@@ -269,9 +269,9 @@
     player.y = Math.max(H * 0.4, Math.min(H - 20, p.y));
   });
   canvas.addEventListener('pointermove', function (e) {
-    if (!dragging) return;
     var p = pointerPos(e);
     if (Math.abs(p.x - downX) > 8 || Math.abs(p.y - downY) > 8) didDrag = true;
+    if (!dragging) return;
     player.x = Math.max(20, Math.min(W - 20, p.x));
     player.y = Math.max(H * 0.4, Math.min(H - 20, p.y));
   });
@@ -300,6 +300,7 @@
     choices = pickChoices();
     if (choices.length === 0) { killCount = 0; return; }
     selecting = true;
+    dragging = false; // 升级瞬间解除拖动，锁定飞机
   }
 
   function applyChoice(id) {
